@@ -12,31 +12,33 @@ import subprocess
 
 
 def experiment(outfile, pcs, N, pingings, ping_rpts, net):
-    pings = []
+    while True:
+        pings = []
 
-    for i in range(2, 2+pingings):
-        target = i + 1 if i <= N else 2
-        # print(i, 'pings', target)
-        pings.append(pcs[i-2].popen(
-            ['ping', '10.10.{}.{}'.format(
-                target, target), '-c', str(ping_rpts), '-i', '0.2'],
-            stdout=PIPE
-        ))
+        for i in range(2, 2+pingings):
+            target = i + 1 if i <= N else 2
+            # print(i, 'pings', target)
+            pings.append(pcs[i-2].popen(
+                ['ping', '10.10.{}.{}'.format(
+                    target, target), '-c', str(ping_rpts), '-i', '0.02' if N < 50 else '1'],
+                stdout=PIPE
+            ))
 
-    outdatas = []
+        outdatas = []
 
-    for pingproc in pings:
-        outdata, errdata = pingproc.communicate()
-        outdatas.append(outdata)
+        for pingproc in pings:
+            outdata, errdata = pingproc.communicate()
+            outdatas.append(outdata)
+            
+        if any(len(od.split('\n')[-2].split('/')) <= 4 for od in outdatas):
+            print('oh noz')
+            time.sleep(1)
+            continue
+        break
 
     for od in outdatas:
-        try:
-            ll = float(od.split('\n')[-2].split('/')[4])
-            print('{},{},{},{}'.format(N, pingings, ping_rpts, ll), file=outfile)
-        except:
-            print(od)
-            CLI(net)
-            raise
+        ll = float(od.split('\n')[-2].split('/')[4])
+        print('{},{},{},{}'.format(N, pingings, ping_rpts, ll), file=outfile)
 
 def ring_topo(outfile, N, pingings, ping_rpts):
     net = Mininet()
@@ -99,7 +101,7 @@ def star_topo(outfile, N, pingings, ping_rpts):
         pcs[i-2].cmd('ip route add default via 10.10.{}.1'.format(i))
 
     try:
-        experiment(outfile, pcs, N, pingings, ping_rpts)
+        experiment(outfile, pcs, N, max(pingings - 1, 1), ping_rpts, net)
     except KeyboardInterrupt:
         pass
 
@@ -107,12 +109,12 @@ def star_topo(outfile, N, pingings, ping_rpts):
 
 
 def main():
-    TOPO = ring_topo
+    TOPO = star_topo
 
-    with open('./ring.csv', 'a') as f:
+    with open('./star_2.csv', 'a') as f:
         for N in [2, 5, 10, 50, 100]:
             for pingings in [1, N]:
-                for ping_rpts in [10, 100]:
+                for ping_rpts in [100]:
                     print(N, pingings, ping_rpts)
                     TOPO(f, N, pingings, ping_rpts)
 
