@@ -130,9 +130,9 @@ def star_topo(outfile, N):
 def main():
     TOPO = star_topo
 
-    with open('./output_2.csv', 'a') as f:
-        for TOPO in [star_topo, ring_topo]:
-            for N in [2, 5, 10, 50, 100]:
+    with open('./output_3.csv', 'a') as f:
+        for TOPO in [star_topo]:
+            for N in [200, 500, 1000]:
                 print(' **', N, TOPO.__name__)
                 TOPO(f, N)
 
