@@ -7,40 +7,51 @@ from mininet.node import Controller, Host
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 import time
-
+import random
 import subprocess
 
 
-def experiment(outfile, pcs, N, pingings, ping_rpts, net):
-    while True:
+def experiment(outfile, topo, pcs, N, pingings, ping_rpts, net, is_random):
+    print('   --', topo, N, pingings, ping_rpts, is_random)
+    all_ok = True
+
+    while all_ok:
         pings = []
+        outdatas = []
+        
+        if is_random:
+            targets = [random.randint(2, N+1) for _ in range(pingings)]
+        else:
+            targets = [ i + 1 if i <= N else 2 for i in range(2, 2+pingings)]
+        
+        for i in range(2, 2+pingings):
+            target = targets[i - 2]
+            pcs[i-2].cmd('ping 10.10.{}.{} -c 1 -W 20'.format(target, target))
 
         for i in range(2, 2+pingings):
-            target = i + 1 if i <= N else 2
+            target = targets[i - 2]
             # print(i, 'pings', target)
             pings.append(pcs[i-2].popen(
-                ['ping', '10.10.{}.{}'.format(
-                    target, target), '-c', str(ping_rpts), '-i', '0.02' if N < 50 else '1'],
+                ['ping', '10.10.{}.{}'.format(target, target),
+                    '-c', str(ping_rpts), '-i', '0.1', '-W', '20'],
                 stdout=PIPE
             ))
 
-        outdatas = []
+        all_ok = False
 
         for pingproc in pings:
             outdata, errdata = pingproc.communicate()
             outdatas.append(outdata)
-            
-        if any(len(od.split('\n')[-2].split('/')) <= 4 for od in outdatas):
-            print('oh noz')
-            time.sleep(1)
-            continue
-        break
+            if len(outdata.split('\n')[-2].split('/')) <= 4:
+                print(outdata)
+                all_ok = True
 
     for od in outdatas:
-        ll = float(od.split('\n')[-2].split('/')[4])
-        print('{},{},{},{}'.format(N, pingings, ping_rpts, ll), file=outfile)
+        ll, _, mdev = od.split('\n')[-2].split('/')[4:7]
+        mdev = mdev.split(' ')[0]
+        print('{},{},{},{},{},{},{}'.format(topo, N, pingings, ping_rpts, is_random, ll, mdev), file=outfile)
 
-def ring_topo(outfile, N, pingings, ping_rpts):
+def ring_topo(outfile, N):
     net = Mininet()
     net.addController('c0')
 
@@ -65,7 +76,11 @@ def ring_topo(outfile, N, pingings, ping_rpts):
     time.sleep(1)
 
     try:
-        experiment(outfile, pcs, N, pingings, ping_rpts, net)
+        # experiment(None, 'bus', pcs, N, N-1, 1, net, False)
+        for pingings in [1, N-1]:
+            for ping_rpts in [100]:
+                for is_random in [True, False]:
+                    experiment(outfile, 'bus', pcs, N, pingings, ping_rpts, net, is_random)
     except KeyboardInterrupt:
         pass
     
@@ -73,7 +88,7 @@ def ring_topo(outfile, N, pingings, ping_rpts):
 
     net.stop()
 
-def star_topo(outfile, N, pingings, ping_rpts):
+def star_topo(outfile, N):
     net = Mininet()
     net.addController('c0')
 
@@ -101,7 +116,11 @@ def star_topo(outfile, N, pingings, ping_rpts):
         pcs[i-2].cmd('ip route add default via 10.10.{}.1'.format(i))
 
     try:
-        experiment(outfile, pcs, N, max(pingings - 1, 1), ping_rpts, net)
+        # experiment(None, 'star', pcs, N, N, 1, net, False)
+        for pingings in [1, N]:
+            for ping_rpts in [100]:
+                for is_random in [True, False]:
+                    experiment(outfile, 'star', pcs, N, pingings, ping_rpts, net, is_random)
     except KeyboardInterrupt:
         pass
 
@@ -111,12 +130,11 @@ def star_topo(outfile, N, pingings, ping_rpts):
 def main():
     TOPO = star_topo
 
-    with open('./star_2.csv', 'a') as f:
-        for N in [2, 5, 10, 50, 100]:
-            for pingings in [1, N]:
-                for ping_rpts in [100]:
-                    print(N, pingings, ping_rpts)
-                    TOPO(f, N, pingings, ping_rpts)
+    with open('./output_2.csv', 'a') as f:
+        for TOPO in [star_topo, ring_topo]:
+            for N in [2, 5, 10, 50, 100]:
+                print(' **', N, TOPO.__name__)
+                TOPO(f, N)
 
 
 main()
